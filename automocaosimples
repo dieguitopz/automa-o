@@ -1,0 +1,108 @@
+import uuid
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional
+from datetime import datetime
+
+class PrioridadeTicket(Enum):
+    BAIXA = 1
+    MEDIA = 2
+    ALTA = 3
+    CRITICA = 4
+
+class StatusTicket(Enum):
+    ABERTO = 'aberto'
+    DESIGNADO = 'designado'
+    EM_ANDAMENTO = 'em_andamento'
+    RESOLVIDO = 'resolvido'
+    FECHADO = 'fechado'
+
+@dataclass
+class Agente:
+    id: str
+    nome: str
+    email: str
+    carga_trabalho: int = 0
+    especializacao: Optional[str] = None
+
+@dataclass
+class Ticket:
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    titulo: str = ''
+    descricao: str = ''
+    prioridade: PrioridadeTicket = PrioridadeTicket.BAIXA
+    status: StatusTicket = StatusTicket.ABERTO
+    criado_em: datetime = field(default_factory=datetime.now)
+    agente_designado: Optional[Agente] = None
+    ultima_atualizacao: datetime = field(default_factory=datetime.now)
+
+class SistemaSuporte:
+    def __init__(self):
+        self.agentes: List[Agente] = []
+        self.tickets: List[Ticket] = []
+
+    def adicionar_agente(self, agente: Agente):
+        self.agentes.append(agente)
+
+    def criar_ticket(self, titulo: str, descricao: str, prioridade: PrioridadeTicket = PrioridadeTicket.BAIXA) -> Ticket:
+        ticket = Ticket(titulo=titulo, descricao=descricao, prioridade=prioridade)
+        self.tickets.append(ticket)
+        return ticket
+
+    def designar_ticket(self, ticket: Ticket) -> Optional[Agente]:
+        # Estratégia de balanceamento de carga
+        agentes_disponiveis = [
+            agente for agente in self.agentes 
+            if agente.carga_trabalho < 5  # Máximo 5 tickets por agente
+        ]
+
+        if not agentes_disponiveis:
+            return None
+
+        # Seleção de agente por especialização
+        agentes_especializados = [
+            agente for agente in agentes_disponiveis 
+            if agente.especializacao in [ticket.prioridade.name.lower()]
+        ]
+
+        agente_selecionado = min(
+            agentes_especializados or agentes_disponiveis, 
+            key=lambda a: a.carga_trabalho
+        )
+
+        ticket.agente_designado = agente_selecionado
+        ticket.status = StatusTicket.DESIGNADO
+        agente_selecionado.carga_trabalho += 1
+        ticket.ultima_atualizacao = datetime.now()
+
+        return agente_selecionado
+
+    def atualizar_status_ticket(self, ticket: Ticket, novo_status: StatusTicket):
+        ticket.status = novo_status
+        ticket.ultima_atualizacao = datetime.now()
+
+        if novo_status == StatusTicket.RESOLVIDO:
+            if ticket.agente_designado:
+                ticket.agente_designado.carga_trabalho -= 1
+
+def main():
+    # Exemplo de uso
+    sistema_suporte = SistemaSuporte()
+
+    # Criar agentes
+    sistema_suporte.adicionar_agente(Agente('1', 'João', 'joao@exemplo.com', especializacao='alta'))
+    sistema_suporte.adicionar_agente(Agente('2', 'Maria', 'maria@exemplo.com', especializacao='media'))
+
+    # Criar ticket
+    ticket_alta_prioridade = sistema_suporte.criar_ticket(
+        "Servidor Fora do Ar", 
+        "Problema crítico de infraestrutura de servidor", 
+        prioridade=PrioridadeTicket.ALTA
+    )
+
+    # Designar ticket
+    agente_designado = sistema_suporte.designar_ticket(ticket_alta_prioridade)
+    print(f"Ticket designado para: {agente_designado.nome if agente_designado else 'Nenhum agente disponível'}")
+
+if __name__ == '__main__':
+    main()
